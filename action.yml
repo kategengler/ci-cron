@@ -1,0 +1,63 @@
+name: CI Cron
+description: Have a workflow to run periodically on a particular branch
+inputs:
+  branch:
+    required: true
+    description: Branch to run CI on
+  personal_token:
+    required: true
+    description: Personal access token with repo scope
+  committer_email:
+    required: false
+    description: Email to use for the commit, defaults to cron@example.org
+    default: 'cron@example.org'
+  committer_name:
+    required: false
+    description: Name to use for the commit, defaults to Cron CI
+    default: 'Cron CI'
+  branch-prefix:
+    required: false
+    description: Prefix to use for the branch, defaults to cron-
+    default: 'cron-'
+  commit_message_prefix:
+    required: false
+    description: Prefix to use for the commit message, defaults to Cron
+    default: 'Cron'
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+        ref: ${{ inputs.branch }}
+
+    - name: Make a commit to have a unique sha
+      shell: bash
+      run: |
+        touch cron.txt
+        git config --local user.email '${{ inputs.committer_email }}'
+        git config --local user.name '${{ inputs.commiter_name }}'
+        git add cron.txt
+        git commit -m "${{ inputs.commit_message_prefix}} $(date +%Y-%m-%d) for ${{ inputs.branch }}"
+        export SHA=`git rev-parse HEAD`
+        echo "SHA=$SHA" >> $GITHUB_ENV
+
+    - name: Push branch to trigger Build workflow
+      shell: bash
+      run: |
+        git checkout -B ${{ inputs.branch_prefix }}${{ inputs.branch }}-${{ env.SHA }}
+        git push https://${GITHUB_ACTOR}:${{ inputs.personal_token }}@github.com/${GITHUB_REPOSITORY} cron-${{ inputs.branch }}-${{ env.SHA }} --force
+
+    - name: Wait for Build completion
+      uses: kategengler/wait-for-check-suites@v1
+      with:
+        ref: ${{ env.SHA }}
+        appSlugFilter: github-actions
+        onlyFirstCheckSuite: true
+        timeoutSeconds: 1800
+
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: git push https://${GITHUB_ACTOR}:${{ inputs.personal_token }}@github.com/${GITHUB_REPOSITORY} --delete ${{ inputs.branch_prefix }}${{ inputs.branch }}-${{ env.SHA }} || true
