@@ -1,5 +1,8 @@
 name: CI Cron
 description: Have a workflow to run periodically on a particular branch
+branding:
+  icon: clock
+  color: blue
 inputs:
   branch:
     required: true
